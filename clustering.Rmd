@@ -1,0 +1,232 @@
+---
+title: "Implementation of the K-Medoids (PAM) and CLARA Algorithms to Cluster Emissions from Gas Turbine"
+author: "Kristian Ekachandra"
+date: "2021"
+output: openintro::lab_report
+---
+
+# Load All Library
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(readxl)
+library(Amelia)
+library(knitr)
+library(openintro)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(caret) #confusion matrix
+library(cluster) #cluster analysis
+library(factoextra) #cluster visualization
+library(clValid) #cluster validation
+```
+
+# Read Dataset and Exploratory Data Analysis
+
+```{r, warning=FALSE, message=FALSE}
+dat <- readxl::read_excel("dataset.xlsx")
+summary(dat)
+
+#Missing Value
+Amelia::missmap(data.frame(dat)) #No Missing Value (100% Observed)
+
+str(dat)
+head(dat, n = 5)
+tail(dat, n = 5)
+
+#About the data:
+##Size or total observation: 7384
+##All variable is numerical
+
+#Visualitation with Density Plot
+##AT (Ambient Temperature)
+ggplot2::ggplot(dat, aes(x = AT)) + 
+  geom_density(fill = "lightblue") + 
+  geom_vline(aes(xintercept = mean(AT)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Ambient Temperature (AT)")
+
+##AP (Ambient Pressure)
+ggplot2::ggplot(dat, aes(x = AP)) + 
+  geom_density(fill = "lightgreen") + 
+  geom_vline(aes(xintercept = mean(AP)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Ambient Pressure (AP)")
+
+##AH (Ambient Humidity)
+ggplot2::ggplot(dat, aes(x = AH)) + 
+  geom_density(fill = "coral") + 
+  geom_vline(aes(xintercept = mean(AH)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Ambient Humidity (AH)")
+
+##AFDP (Air Filter Difference Pressure)
+ggplot2::ggplot(dat, aes(x = AFDP)) + 
+  geom_density(fill = "cyan") + 
+  geom_vline(aes(xintercept = mean(AFDP)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Air Filter Difference Pressure (AFDP)")
+
+##GTEP (Gas Turbine Exhaust Pressure)
+ggplot2::ggplot(dat, aes(x = GTEP)) + 
+  geom_density(fill = "red") + 
+  geom_vline(aes(xintercept = mean(GTEP)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Gas Turbine Exhaust Pressure (GTEP)")
+
+##TIT (Turbine Inlet Temperature)
+ggplot2::ggplot(dat, aes(x = TIT)) + 
+  geom_density(fill = "darksalmon") + 
+  geom_vline(aes(xintercept = mean(TIT)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Turbine Inlet Temperature (TIT)")
+
+##TAT (Turbine After Temperature)
+ggplot2::ggplot(dat, aes(x = TAT)) + 
+  geom_density(fill = "brown") + 
+  geom_vline(aes(xintercept = mean(TAT)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Turbine After Temperature (TAT)")
+
+##TEY (Turbine Energy Yield)
+ggplot2::ggplot(dat, aes(x = TEY)) + 
+  geom_density(fill = "azure") + 
+  geom_vline(aes(xintercept = mean(TEY)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Turbine Energy Yield (TEY)")
+
+##CDP (Compressor Discharge Pressure)
+ggplot2::ggplot(dat, aes(CDP)) + 
+  geom_density(fill = "violet") + 
+  geom_vline(aes(xintercept = mean(CDP)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Compressor Discharge Pressure (CDP)")
+
+##CO (Carbon Monoxide)
+ggplot2::ggplot(dat, aes(x = CO)) + 
+  geom_density(fill = "pink") + 
+  geom_vline(aes(xintercept = mean(CO)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Carbon Monoxide (CO)")
+
+##NOX (Nitrogen Oxides)
+ggplot2::ggplot(dat, aes(x = NOX)) + 
+  geom_density(fill = "orange") + 
+  geom_vline(aes(xintercept = mean(NOX)), color = "blue", linetype = "dashed", size = 1) +
+  labs(title = "Nitrogen Oxides (NOX)")
+
+#Correlation Plot
+plot(dat, col = dat$NOX)
+GGally::ggpairs(data.frame(dat))
+
+#Scaling
+dat <- scale(dat, center = TRUE, scale = TRUE)
+dat %>% head()
+```
+
+# Split Data
+
+```{r, warning=FALSE, message=FALSE}
+set.seed(43961)
+samp <- sample(nrow(dat), 0.7 * nrow(dat), replace = FALSE)
+data_train <- dat[samp, ] #70% data_tain
+data_test <- dat[-samp, ] #30% data_test
+```
+
+#Algorithms
+
+## 1. K-Medoids (PAM)
+
+```{r, warning=FALSE, message=FALSE}
+# Choose optimum number of cluster
+set.seed(43961)
+factoextra::fviz_nbclust(data_train, FUNcluster = pam, method = "silhouette") #k = 2
+factoextra::fviz_nbclust(data_train, FUNcluster = pam, method = "wss") # = 4
+
+# Cluster
+set.seed(43961)
+pam.res <- cluster::pam(data_train, k = 2)
+
+# Visual Clustering
+factoextra::fviz_cluster(pam.res, data = data_train, geom = "point") + 
+  labs(title = "Clustering Emissions from Gas Turbine\nwith K-Medoids/PAM (k = 2)")
+
+# Print components of pam.res
+print(pam.res)
+
+# Cluster Validation
+## Internal Validation
+### Dunn's index
+set.seed(43961)
+clmethods <- c("pam")
+intern <- clValid::clValid(data_train, nClust = 2:4, clMethods = clmethods, validation = "internal", maxitems = nrow(data_train))
+summary(intern)
+
+##              Score     Method    Clusters
+## Connectivity	282.3984	pam	      2
+## Dunn	        0.0130	  pam       2
+## Silhouette	  0.3437	  pam       2
+```
+
+## 2. CLARA
+
+```{r, message=FALSE, warning=FALSE}
+# Choose optimum number of cluster
+set.seed(43961)
+factoextra::fviz_nbclust(data_train, FUNcluster = clara, method = "silhouette") #k = 2
+factoextra::fviz_nbclust(data_train, FUNcluster = clara, method = "wss") #k = 5
+
+# Compute CLARA
+set.seed(43961)
+clara.res <- cluster::clara(data_train, k = 2, metric = "euclidean", stand = TRUE)
+
+# Print components of clara.res
+print(clara.res)
+
+# Visual Clustering
+factoextra::fviz_cluster(clara.res, data_train, geom = "point") + 
+  labs(title = "Clustering Emissions from Gas Turbine\nwith CLARA (k = 2)")
+
+# Cluster Validation
+## Internal Validation
+### Dunn's index
+set.seed(43961)
+clmethods <- c("clara")
+intern <- clValid::clValid(data_train, nClust = 2:5, clMethods = clmethods, validation = "internal", maxitems = nrow(data_train))
+summary(intern)
+
+##              Score     Method    Clusters
+## Connectivity	345.8591	clara	      2
+## Dunn	        0.0102	  clara       2
+## Silhouette	  0.3407	  clara       2
+```
+
+# Comparison of clustering qualities among algorithms
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(43961)
+methodstocompare = c("pam", "clara")
+intern <- clValid::clValid(data_train, nClust = 2:5, clMethods = methodstocompare,
+   validation = "internal", metric = "euclidean", method = "average", maxitems = nrow(data_train))
+clValid::optimalScores(intern)
+
+##Best algo for clustering -> PAM / K-Medoids
+##              Score         Method    Clusters
+## Connectivity	282.39841270	pam	      2
+## Dunn	        0.01304795	  pam       2
+## Silhouette	  0.34366917	  pam       2
+
+#Value for Connectivity width is quite high while Dunn index and Silhouette scores are low.
+```
+
+#Conclusion
+
+Using the K-Medoids/PAM algorithm in clustering Emissions from Gas Turbine data is better than using the CLARA algorithm.
+By comparison:
+
+##              Score     Method    Clusters
+## Connectivity	282.3984	pam	      2
+## Dunn	        0.0130	  pam       2
+## Silhouette	  0.3437	  pam       2
+
+##              Score     Method    Clusters
+## Connectivity	345.8591	clara	      2
+## Dunn	        0.0102	  clara       2
+## Silhouette	  0.3407	  clara       2
+
+PAM Connectivity is lower than CLARA, that means PAM is better than CLARA
+PAM Dunn Index is bigger than CLARA, that means PAM is better than CLARA
+PAM Silhouette is closer to one than CLARA, that means PAM is better than CLARA
+
+However, in terms of speed, CLARA clustering is faster because it is designed to cluster with large amounts of data.
